@@ -1,0 +1,55 @@
+При фазз тестировании использовался libFuzzer.
+
+LibFuzzer очень прост в установке на UNIX, поскольку встроен в Clang + llvm.
+
+Для работы с libFuzzer'ом, нужно создать специальную функцию 
+
+```
+extern "C" int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
+  DoSomethingInterestingWithMyAPI(Data, Size);
+  return 0;  // Values other than 0 and -1 are reserved for future use.
+}
+````
+
+где DoSomethingInterestingWithMyAPI -- будет тестируемой функцией.
+Аргументы Data и Size -- буфер с фиксированным размером, который будет обработан программой.
+
+
+
+--------------Использование в проекте
+
+Одним из плюсов libFuzzera -- можно легко и быстро интегрировать в проект и начать работать.
+
+Например, я "профаззил" свой студенческий проект, написанный на С++, в котором 5000 строк кода. Вот что получилось:
+
+1. Поскольку материала не так много практического в интернете, то создавал отдельно программу для тестирования отдельной функции.
+2. "Собирал фаззер" с рандомными сидамии и параметрами, такие как -fsanitize=fuzzer,address (есть еще параметр memory, но его нельзя использовать с address).
+3. Запускал фаззер. Фазер либо создавал тест-кейс который прерывал программу, либо исполнялся до определенного условия, указанного при старте (например, указать
+количество прогонов с помощью опции runs).
+4. В случае ошибки, фазер выдавал stack trace, тип ошибки и дополнительную информацию, которую нужно научиться еще читать.
+5. Также libFuzzer при ошибке создает тест-кейс соответствующий.
+
+За весь процесс фаззинга в моем проекте обнаружилось более 50 уязвимостей, и самая часто встречающеся ошибки были AddressSanitizer: heap-buffer-overflow
+(например, при создании строки из char*, при работе с массивами...) и LeakSanitizer.
+Одна из самых интересных вещей, что подобные ошибки заставляют создавать более безопасный код и следовать лучшим практикам.
+
+
+Но не все выходило так гладко, и вот некоторые вещи, с которыми нужно еще разобраться
+
+1. Создавать собственные сиды. Фаззер может работать с некоторыми входными сидами (верными и неверными шаблонами), что повысить эффективность тестирования.
+Надо разобраться, как создавать собственные сиды.
+2. Разобраться с чтением ошибки, а именно со следующим выводом фазера, как его правильно читать:
+
+Shadow bytes around the buggy address:
+  0x0c047fff8330: fa fa fd fa fa fa fd fa fa fa fd fa fa fa fd fa
+  0x0c047fff8340: fa fa fd fa fa fa fd fa fa fa fd fa fa fa fd fa
+  0x0c047fff8350: fa fa fd fa fa fa fd fa fa fa fd fa fa fa fd fa
+  0x0c047fff8360: fa fa fd fa fa fa fd fa fa fa fd fa fa fa fd fa
+  0x0c047fff8370: fa fa fd fa fa fa fd fa fa fa fd fa fa fa fd fa
+=>0x0c047fff8380: fa fa fd fa fa fa[05]fa fa fa fa fa fa fa fa fa
+  0x0c047fff8390: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa
+  0x0c047fff83a0: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa
+  0x0c047fff83b0: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa
+  0x0c047fff83c0: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa
+  0x0c047fff83d0: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa
+  
